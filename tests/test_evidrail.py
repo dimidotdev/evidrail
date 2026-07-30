@@ -102,8 +102,8 @@ class EvidrailCliTests(unittest.TestCase):
     def test_verified_gate_requires_passed_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory) / "verified.md"
-            ready_text = DOGFOOD.read_text(encoding="utf-8")
-            target.write_text(ready_text.replace("status: ready", "status: verified"), encoding="utf-8")
+            verified_text = DOGFOOD.read_text(encoding="utf-8")
+            target.write_text(verified_text.replace("| passed |", "| planned |"), encoding="utf-8")
             blocked = run_cli("check", str(target), "--gate", "verified")
             self.assertEqual(blocked.returncode, 1)
             self.assertIn("GATE003", blocked.stdout)
@@ -119,7 +119,7 @@ class EvidrailCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory) / "trace-gap.md"
             text = DOGFOOD.read_text(encoding="utf-8")
-            text = text.replace("| REQ-012 | AC-012 | TEST-012 | planned |\n", "")
+            text = text.replace("| REQ-012 | AC-012 | TEST-012 | passed |\n", "")
             target.write_text(text, encoding="utf-8")
             result = run_cli("trace", str(target), "--format", "json")
             self.assertEqual(result.returncode, 1)

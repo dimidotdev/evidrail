@@ -1,7 +1,7 @@
 ---
 spec: SPEC-EVIDRAIL-0001
 title: "Evidrail v1"
-status: ready
+status: verified
 profile: standard
 mode: deliver
 owner: dimidotdev
@@ -16,6 +16,7 @@ updated: 2026-07-29
 - EVD-001 | source: skill-creator guidance | A reusable skill needs concise instructions, progressive disclosure, deterministic validation, and forward testing.
 - EVD-002 | source: current AI-assisted development workflow | Requests often mix intended outcomes, implementation guesses, and unstated constraints.
 - EVD-003 | source: Python standard library | Argument parsing, Markdown scanning, JSON emission, and unit testing are available without third-party packages.
+- EVD-004 | source: GitHub Actions run 30546819003 | The full unit suite, dogfood gate, and trace command passed on Ubuntu, Windows, and macOS with Python 3.11.
 - ASM-001 | Python 3.11 or newer is available where the validator runs. | validation: exercise the CI matrix on supported operating systems.
 
 ## Problem
@@ -126,18 +127,31 @@ The public interface is `python3 scripts/evidrail.py` with `init`, `check`, and 
 
 | Requirement | Acceptance | Verification | Status |
 | --- | --- | --- | --- |
-| REQ-001 | AC-001 | TEST-001 | planned |
-| REQ-002 | AC-002 | TEST-002 | planned |
-| REQ-003 | AC-003 | TEST-003 | planned |
-| REQ-004 | AC-004 | TEST-004 | planned |
-| REQ-005 | AC-005 | TEST-005 | planned |
-| REQ-006 | AC-006 | TEST-006 | planned |
-| REQ-007 | AC-007 | TEST-007 | planned |
-| REQ-008 | AC-008 | TEST-008 | planned |
-| REQ-009 | AC-009 | TEST-009 | planned |
-| REQ-010 | AC-010 | TEST-010 | planned |
-| REQ-011 | AC-011 | TEST-011 | planned |
-| REQ-012 | AC-012 | TEST-012 | planned |
+| REQ-001 | AC-001 | TEST-001 | passed |
+| REQ-002 | AC-002 | TEST-002 | passed |
+| REQ-003 | AC-003 | TEST-003 | passed |
+| REQ-004 | AC-004 | TEST-004 | passed |
+| REQ-005 | AC-005 | TEST-005 | passed |
+| REQ-006 | AC-006 | TEST-006 | passed |
+| REQ-007 | AC-007 | TEST-007 | passed |
+| REQ-008 | AC-008 | TEST-008 | passed |
+| REQ-009 | AC-009 | TEST-009 | passed |
+| REQ-010 | AC-010 | TEST-010 | passed |
+| REQ-011 | AC-011 | TEST-011 | passed |
+| REQ-012 | AC-012 | TEST-012 | passed |
+
+- TEST-001 | `test_init_creates_template_and_refuses_implicit_overwrite` and `test_light_init_uses_micro_spec_and_normalizes_prefixed_filename` passed locally and in CI.
+- TEST-002 | The overwrite test preserved original bytes and returned I/O code 3; invalid identity also left no target file.
+- TEST-003 | The invalid fixture produced stable metadata, structure, duplicate-ID, reference, placeholder, question, and trace finding codes.
+- TEST-004 | Ready-gate tests rejected blocking content and accepted both the standard dogfood spec and compact light fixture.
+- TEST-005 | `test_verified_gate_requires_passed_evidence` failed planned rows and passed only after every normative row was recorded as passed.
+- TEST-006 | Trace tests reported complete mappings and failed a deliberately removed normative row plus structural defects.
+- TEST-007 | JSON parsed as one stable document and repeated SARIF output was byte-identical with source locations.
+- TEST-008 | GitHub Actions run 30546819003 passed the unit suite, dogfood gate, and trace command on Ubuntu, Windows, and macOS using Python 3.11.
+- TEST-009 | Independent light and critical forward tests selected and stated `specify/light` and `specify/critical`; the audit test selected `audit/light`.
+- TEST-010 | Forward-test artifacts converted visual continuity, accessibility, authorization, privacy, failure, observability, rollout, and recovery concerns into requirements proportional to risk.
+- TEST-011 | Critical forward testing exposed the prose-review loophole; the revised gate rejected it, and `test_structured_passed_review_satisfies_critical_readiness` passed only with a structured record.
+- TEST-012 | The independent audit labeled assumptions and explicitly declined to claim implementation defects without implementation evidence; skipped checks remain non-passing states in the validator.
 
 ## Decisions
 
