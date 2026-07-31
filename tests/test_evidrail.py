@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -15,10 +16,15 @@ INVALID = ROOT / "tests" / "fixtures" / "invalid-spec.md"
 VALID_LIGHT = ROOT / "tests" / "fixtures" / "valid-light-spec.md"
 
 
-def run_cli(*args: str, cwd: Path = ROOT) -> subprocess.CompletedProcess[str]:
+def run_cli(
+    *args: str,
+    cwd: Path = ROOT,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, str(SCRIPT), *args],
         cwd=cwd,
+        env=env,
         check=False,
         capture_output=True,
         text=True,
@@ -99,6 +105,26 @@ class EvidrailCliTests(unittest.TestCase):
             payload = json.loads(checked.stdout)
             self.assertGreater(payload["summary"]["warnings"], 0)
 
+    def test_init_does_not_persist_environment_username(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "private-owner.md"
+            environment = {**os.environ, "USER": "personal-system-login"}
+            created = run_cli("init", str(target), "--title", "Private owner", env=environment)
+            self.assertEqual(created.returncode, 0, created.stderr)
+            source = target.read_text(encoding="utf-8")
+            self.assertIn('owner: "unassigned"', source)
+            self.assertNotIn("personal-system-login", source)
+
+    def test_ready_gate_requires_explicit_owner(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "unassigned-owner.md"
+            text = DOGFOOD.read_text(encoding="utf-8").replace("owner: dimidotdev", 'owner: " unassigned "')
+            target.write_text(text, encoding="utf-8")
+            result = run_cli("check", str(target), "--gate", "ready", "--format", "json")
+            self.assertEqual(result.returncode, 1)
+            payload = json.loads(result.stdout)
+            self.assertIn("OWNER001", {finding["code"] for finding in payload["findings"]})
+
     def test_verified_gate_requires_passed_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory) / "verified.md"
@@ -114,6 +140,72 @@ class EvidrailCliTests(unittest.TestCase):
             )
             passed = run_cli("check", str(target), "--gate", "verified")
             self.assertEqual(passed.returncode, 0, passed.stdout + passed.stderr)
+
+    def test_verified_gate_requires_disposition_for_should_requirements(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "should-gap.md"
+            text = DOGFOOD.read_text(encoding="utf-8")
+            text = text.replace("- REQ-012 | must-not |", "- REQ-012 | should |")
+            text = text.replace("| REQ-012 | AC-012 | TEST-012 | passed |\n", "")
+            target.write_text(text, encoding="utf-8")
+            result = run_cli("check", str(target), "--gate", "verified", "--format", "json")
+            self.assertEqual(result.returncode, 1)
+            payload = json.loads(result.stdout)
+            self.assertIn("GATE005", {finding["code"] for finding in payload["findings"]})
+            trace = run_cli("trace", str(target), "--format", "json")
+            self.assertEqual(trace.returncode, 1)
+            self.assertFalse(json.loads(trace.stdout)["complete"])
+
+    def test_not_applicable_requires_decision_explanation(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "not-applicable.md"
+            text = DOGFOOD.read_text(encoding="utf-8")
+            text = text.replace("- REQ-012 | must-not |", "- REQ-012 | should |")
+            text = text.replace(
+                "| REQ-012 | AC-012 | TEST-012 | passed |",
+                "| REQ-012 | AC-012 | TEST-012 | not-applicable |",
+            )
+            target.write_text(text, encoding="utf-8")
+            rejected = run_cli("check", str(target), "--gate", "verified", "--format", "json")
+            self.assertEqual(rejected.returncode, 1)
+            payload = json.loads(rejected.stdout)
+            self.assertIn("TRACE008", {finding["code"] for finding in payload["findings"]})
+
+            bare_decision = "- DEC-005 | REQ-012\n"
+            source = target.read_text(encoding="utf-8").replace(
+                "## Open Questions\n",
+                f"{bare_decision}\n## Open Questions\n",
+            )
+            target.write_text(source, encoding="utf-8")
+            still_rejected = run_cli("check", str(target), "--gate", "verified", "--format", "json")
+            self.assertEqual(still_rejected.returncode, 1)
+            payload = json.loads(still_rejected.stdout)
+            self.assertIn("TRACE008", {finding["code"] for finding in payload["findings"]})
+
+            empty_rationale = "- DEC-005 | req-012 | rationale: | affects: REQ-012\n"
+            source = target.read_text(encoding="utf-8").replace(bare_decision, empty_rationale)
+            target.write_text(source, encoding="utf-8")
+            still_rejected = run_cli("check", str(target), "--gate", "verified", "--format", "json")
+            self.assertEqual(still_rejected.returncode, 1)
+            payload = json.loads(still_rejected.stdout)
+            self.assertIn("TRACE008", {finding["code"] for finding in payload["findings"]})
+
+            punctuation_rationale = "- DEC-005 | req-012 | rationale: - | affects: REQ-012\n"
+            source = target.read_text(encoding="utf-8").replace(empty_rationale, punctuation_rationale)
+            target.write_text(source, encoding="utf-8")
+            still_rejected = run_cli("check", str(target), "--gate", "verified", "--format", "json")
+            self.assertEqual(still_rejected.returncode, 1)
+            payload = json.loads(still_rejected.stdout)
+            self.assertIn("TRACE008", {finding["code"] for finding in payload["findings"]})
+
+            decision = (
+                "- DEC-005 | req-012 is not applicable to this verification because its advisory "
+                "behavior was intentionally excluded. | rationale: approved scope boundary\n"
+            )
+            source = target.read_text(encoding="utf-8").replace(punctuation_rationale, decision)
+            target.write_text(source, encoding="utf-8")
+            accepted = run_cli("check", str(target), "--gate", "verified")
+            self.assertEqual(accepted.returncode, 0, accepted.stdout + accepted.stderr)
 
     def test_trace_fails_when_normative_coverage_is_missing(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -140,12 +232,117 @@ class EvidrailCliTests(unittest.TestCase):
             self.assertIn("CRIT005", {finding["code"] for finding in payload["findings"]})
 
     def test_structured_passed_review_satisfies_critical_readiness(self) -> None:
+        evidence_cases = (
+            "review record dated 2026-07-29",
+            "security due diligence report 2026-07-31",
+            "https://example.com/reviews/security-001",
+        )
+        for evidence in evidence_cases:
+            with self.subTest(evidence=evidence):
+                with tempfile.TemporaryDirectory() as directory:
+                    target = Path(directory) / "critical-reviewed.md"
+                    text = DOGFOOD.read_text(encoding="utf-8").replace("profile: standard", "profile: critical")
+                    review = (
+                        "- REVIEW-001 | security | passed | reviewer: independent-reviewer | "
+                        f"evidence: {evidence}\n\n"
+                    )
+                    text = text.replace("## Decisions\n", f"{review}## Decisions\n")
+                    target.write_text(text, encoding="utf-8")
+                    result = run_cli("check", str(target), "--gate", "ready")
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_critical_ready_gate_rejects_self_review_without_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            target = Path(directory) / "critical-reviewed.md"
+            target = Path(directory) / "critical-self-reviewed.md"
             text = DOGFOOD.read_text(encoding="utf-8").replace("profile: standard", "profile: critical")
+            review = "- REVIEW-001 | security | passed | reviewer: self | evidence: none\n\n"
+            text = text.replace("## Decisions\n", f"{review}## Decisions\n")
+            target.write_text(text, encoding="utf-8")
+            result = run_cli("check", str(target), "--gate", "ready", "--format", "json")
+            self.assertEqual(result.returncode, 1)
+            payload = json.loads(result.stdout)
+            codes = {finding["code"] for finding in payload["findings"]}
+            self.assertTrue({"CRIT005", "REVIEW003", "REVIEW004"}.issubset(codes))
+
+    def test_critical_review_rejects_owner_placeholder_and_nonconcrete_evidence(self) -> None:
+        cases = (
+            ("dimidotdev", "review record dated 2026-07-31", "REVIEW003"),
+            ('"dimidotdev"', "review record dated 2026-07-31", "REVIEW003"),
+            ("unassigned", "review record dated 2026-07-31", "REVIEW003"),
+            ("autor", "registro de revisão de 2026-07-31", "REVIEW003"),
+            ("eu", "registro de revisão de 2026-07-31", "REVIEW003"),
+            ("yo", "registro de revisión de 2026-07-31", "REVIEW003"),
+            ("independent-reviewer", "N/A — review not recorded", "REVIEW004"),
+            ("independent-reviewer", "none provided", "REVIEW004"),
+            ("independent-reviewer", '"none"', "REVIEW004"),
+            ("independent-reviewer", "pending", "REVIEW004"),
+            ("independent-reviewer", "planned", "REVIEW004"),
+            ("independent-reviewer", "review planned for 2026-08-01", "REVIEW004"),
+            ("independent-reviewer", "review planned: https://example.com/review-plan", "REVIEW004"),
+            (
+                "independent-reviewer",
+                "review of the authentication migration is planned: https://example.com/review-plan",
+                "REVIEW004",
+            ),
+            ("independent-reviewer", "revisão pendente em 2026-08-01", "REVIEW004"),
+            ("independent-reviewer", "revisión planificada para 2026-08-01", "REVIEW004"),
+            ("independent-reviewer", "review required by 2026-08-01", "REVIEW004"),
+            ("independent-reviewer", "2026-08-01", "REVIEW004"),
+        )
+        for reviewer, evidence, expected_code in cases:
+            with self.subTest(reviewer=reviewer, evidence=evidence):
+                with tempfile.TemporaryDirectory() as directory:
+                    target = Path(directory) / "critical-invalid-review.md"
+                    text = DOGFOOD.read_text(encoding="utf-8").replace("profile: standard", "profile: critical")
+                    review = (
+                        f"- REVIEW-001 | security | passed | reviewer: {reviewer} | "
+                        f"evidence: {evidence}\n\n"
+                    )
+                    text = text.replace("## Decisions\n", f"{review}## Decisions\n")
+                    target.write_text(text, encoding="utf-8")
+                    result = run_cli("check", str(target), "--gate", "ready", "--format", "json")
+                    self.assertEqual(result.returncode, 1)
+                    payload = json.loads(result.stdout)
+                    self.assertIn(expected_code, {finding["code"] for finding in payload["findings"]})
+
+    def test_localized_portuguese_critical_spec_passes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "critical-portuguese.md"
+            text = DOGFOOD.read_text(encoding="utf-8").replace("profile: standard", "profile: critical")
+            text = text.replace("Given ", "Dado ").replace(", when ", ", quando ").replace(", then ", ", então ")
+            text = text.replace("trust boundaries", "fronteiras de confiança")
+            text = text.replace("Abuse", "Abuso").replace("authorization", "autorização")
+            text = text.replace("retention", "retenção")
+            text = text.replace("Stop conditions:", "Condições de parada:")
+            text = text.replace(
+                "Rollback or forward recovery:",
+                "Reversão ou recuperação progressiva:",
+            )
             review = (
-                "- REVIEW-001 | security | passed | reviewer: independent-reviewer | "
-                "evidence: review record dated 2026-07-29\n\n"
+                "- REVIEW-001 | security | passed | reviewer: revisor-independente | "
+                "evidence: registro de revisão de 2026-07-31\n\n"
+            )
+            text = text.replace("## Decisions\n", f"{review}## Decisions\n")
+            target.write_text(text, encoding="utf-8")
+            result = run_cli("check", str(target), "--gate", "ready")
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_localized_spanish_critical_spec_passes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "critical-spanish.md"
+            text = DOGFOOD.read_text(encoding="utf-8").replace("profile: standard", "profile: critical")
+            text = text.replace("Given ", "Dado ").replace(", when ", ", cuando ").replace(", then ", ", entonces ")
+            text = text.replace("trust boundaries", "límites de confianza")
+            text = text.replace("Abuse", "Abuso").replace("authorization", "autorización")
+            text = text.replace("retention", "retención")
+            text = text.replace("Stop conditions:", "Condiciones de detención:")
+            text = text.replace(
+                "Rollback or forward recovery:",
+                "Reversión o recuperación progresiva:",
+            )
+            review = (
+                "- REVIEW-001 | security | passed | reviewer: revisor-independiente | "
+                "evidence: registro de revisión de 2026-07-31\n\n"
             )
             text = text.replace("## Decisions\n", f"{review}## Decisions\n")
             target.write_text(text, encoding="utf-8")

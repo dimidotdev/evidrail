@@ -25,5 +25,9 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Validate dogfood specification
         run: python skill/spec-driven-development/scripts/evidrail.py check specs/evidrail-v1.md --gate ready
+      - name: Validate conversation-first specification
+        run: python skill/spec-driven-development/scripts/evidrail.py check specs/evidrail-conversation-first.md --gate ready --strict
       - name: Verify traceability
         run: python skill/spec-driven-development/scripts/evidrail.py trace specs/evidrail-v1.md
+      - name: Verify conversation-first traceability
+        run: python skill/spec-driven-development/scripts/evidrail.py trace specs/evidrail-conversation-first.md

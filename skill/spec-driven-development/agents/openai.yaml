@@ -1,4 +1,4 @@
 interface:
   display_name: "Spec-Driven Development"
-  short_description: "Turn intent into safe, testable delivery"
-  default_prompt: "Use $spec-driven-development to turn this request into an evidence-backed specification and deliver it with quality, design, security, and verification gates."
+  short_description: "Explore ideas and preserve approved intent"
+  default_prompt: "Use $spec-driven-development to help me explore this idea with adaptive questions, preserve living context, and formalize only decisions I approve."

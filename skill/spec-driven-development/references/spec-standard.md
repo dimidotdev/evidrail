@@ -85,6 +85,10 @@ Write acceptance scenarios as observable Given/When/Then behavior:
 - AC-001 | REQ-001 | Given an idle route, when loading remains pending for 150 ms, then the progress indicator is visible and the content bounding box is unchanged.
 ```
 
+The validator recognizes the equivalent `Dado/Quando/Então` and `Dado/Cuando/Entonces` structures
+for Portuguese and Spanish artifacts. Keep all three phases explicit in whichever supported language
+the project uses.
+
 Record evidence, assumptions, decisions, questions, and tests as `EVD-*`, `ASM-*`, `DEC-*`, `Q-*`, and `TEST-*`.
 
 ## Profile gates
@@ -122,7 +126,14 @@ Record completed critical review under `Verification and Traceability` using a s
 - REVIEW-001 | security | passed | reviewer: reviewer identity | evidence: dated review artifact or URL
 ```
 
-Valid scopes are `general`, `security`, `privacy`, `design`, and `verification`; states are `planned`, `passed`, `failed`, and `blocked`. The ready gate requires at least one `passed` review for a critical spec. Prose saying review is planned or required is not review evidence. Add separate records when the risk needs multiple domain reviewers.
+Valid scopes are `general`, `security`, `privacy`, `design`, and `verification`; states are `planned`,
+`passed`, `failed`, and `blocked`. The ready gate requires at least one `passed` review for a critical
+spec, a reviewer different from the declared spec owner, and concrete evidence rather than `none` or
+`N/A`. Evidence must be an HTTP(S) artifact URL or name a review record/report/artifact with a valid
+ISO date (`YYYY-MM-DD`). Prose saying review is planned, pending, scheduled or required is not review
+evidence. The validator rejects obvious English, Portuguese and Spanish self-review labels but cannot
+authenticate identity or evidence; use signed repository governance when that guarantee matters. Add
+separate records when the risk needs multiple domain reviewers.
 
 ## Readiness semantics
 
@@ -134,11 +145,40 @@ Allow unresolved work, but require valid metadata and recognizable structure. Re
 
 Require no placeholders, duplicate IDs, orphaned normative requirements, unexplained `N/A`, or blocking questions. Require every `must`/`must-not` requirement to map to at least one acceptance criterion and one planned verification.
 
+Require an explicitly assigned owner. `init` may use the non-personal `unassigned` value while the
+artifact is a draft, but ready and verified specifications must replace it with the accountable team
+or person.
+
 For a critical profile, also require a structured `REVIEW-*` record with `passed` status, a reviewer identity, and evidence. The author cannot self-waive failed or blocked review.
 
 ### Verified gate
 
-Require `status: verified`, no traceability row remaining `planned`, `blocked`, or `failed`, and evidence for every normative requirement.
+Require `status: verified`, no traceability row remaining `planned`, `blocked`, or `failed`, passed
+evidence for every `must`/`must-not`, and either passed evidence or an explained `not-applicable`
+disposition for every `should`. A `may` remains optional unless the spec gives it a trace row, in
+which case that row must still be closed.
+
+## Approval and reconsideration
+
+The validator proves structural readiness; it cannot authenticate human approval. In the
+conversation-first workflow, set `status: ready` only after the authorized owner has confirmed the
+material baseline.
+
+After confirmation, keep normative intent stable while delivery evidence advances. If new intent or
+evidence materially changes an outcome, requirement, public behavior, risk boundary or recovery
+promise:
+
+1. move the affected decision back to exploration and record the trigger in project history;
+2. show the old and proposed behavior plus verification consequences;
+3. return the spec to `draft` when the baseline is no longer approved;
+4. update it visibly with a `DEC-*`, stable IDs where semantics remain the same, and a new `updated`
+   date;
+5. restore `ready` only after reconfirmation.
+
+Lifecycle status, trace statuses and verification evidence are expected to change during delivery and
+do not by themselves reopen product intent. Use a successor spec when a change is independently
+deliverable or would make the original contract difficult to understand. Git or the team's review
+system remains the approval audit trail.
 
 ## Traceability
 
@@ -154,7 +194,10 @@ Each row maps exactly one `REQ-*`, one `AC-*`, and one `TEST-*`. Repeat the requ
 
 Valid trace statuses: `planned`, `passed`, `failed`, `blocked`, `not-applicable`.
 
-`not-applicable` requires a `DEC-*` explanation and is invalid for a `must` or `must-not` requirement under the verified gate.
+`not-applicable` requires a `DEC-*` block that references the affected `REQ-*` and includes a
+`rationale:` (or localized `justificativa:`, `razón:` or `motivo:`) containing at least one letter or
+number before the next table separator; it is invalid for a `must` or `must-not` requirement under
+the verified gate.
 
 ## Anti-patterns
 

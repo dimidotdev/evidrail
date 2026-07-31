@@ -103,6 +103,74 @@ AMBIGUOUS_RE = re.compile(
     re.IGNORECASE,
 )
 
+ACCEPTANCE_KEYWORD_SETS = (
+    (r"\bgiven\b", r"\bwhen\b", r"\bthen\b"),
+    (r"\b(?:dado|dada|dados|dadas)\b", r"\bquando\b", r"\b(?:então|entao)\b"),
+    (r"\b(?:dado|dada|dados|dadas)\b", r"\bcuando\b", r"\bentonces\b"),
+)
+
+RISK_SECTION_CHECKS = (
+    (
+        r"\b(?:rollback|roll back|revert|reversion|recovery|reversão|reversao|recuperação|"
+        r"recuperacao|reversión|reversion|recuperación|recuperacion)\b",
+        "RISK001",
+        "rollback or forward-recovery path",
+    ),
+    (
+        r"\b(?:stop|halt|pause|parada|parar|interrupção|interrupcao|detener|detención|detencion)\b",
+        "RISK002",
+        "rollout stop condition",
+    ),
+)
+
+CRITICAL_SECTION_CHECKS = (
+    (
+        "Security and Privacy",
+        r"trust\s+boundar|fronteira(?:s)?\s+de\s+confiança|fronteira(?:s)?\s+de\s+confianca|"
+        r"l[ií]mite(?:s)?\s+de\s+confianza",
+        "CRIT001",
+        "trust boundaries",
+    ),
+    (
+        "Security and Privacy",
+        r"\b(?:abuse|misuse|abuso|uso\s+indevido|mal\s+uso)\b",
+        "CRIT002",
+        "abuse or misuse cases",
+    ),
+    (
+        "Security and Privacy",
+        r"authoriz|autoriza(?:ção|cao)|autorizaci[oó]n",
+        "CRIT003",
+        "authorization decisions",
+    ),
+    (
+        "Security and Privacy",
+        r"retention|classification|reten(?:ção|cao)|classifica(?:ção|cao)|retenci[oó]n|"
+        r"clasificaci[oó]n",
+        "CRIT004",
+        "data classification or retention",
+    ),
+)
+
+NON_INDEPENDENT_REVIEWERS = {
+    "self",
+    "myself",
+    "author",
+    "spec author",
+    "owner",
+    "unassigned",
+    "eu",
+    "autor",
+    "autora",
+    "próprio",
+    "proprio",
+    "própria",
+    "propria",
+    "yo",
+    "mismo",
+    "misma",
+}
+
 
 @dataclass(frozen=True)
 class Finding:
@@ -307,6 +375,93 @@ def parse_document(path: Path, display_path: str | None = None) -> Document:
 
 def section_text(document: Document, section: str) -> str:
     return "\n".join(raw for _, raw in document.sections.get(section, [])).strip()
+
+
+def _has_acceptance_structure(text: str) -> bool:
+    return any(
+        all(re.search(pattern, text, re.IGNORECASE) for pattern in patterns)
+        for patterns in ACCEPTANCE_KEYWORD_SETS
+    )
+
+
+def _normalize_claim(value: str) -> str:
+    value = value.strip()
+    while len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+        value = value[1:-1].strip()
+    return " ".join(value.casefold().split())
+
+
+def _decision_explains_requirement(document: Document, requirement: str) -> bool:
+    blocks: list[list[str]] = []
+    current: list[str] = []
+    for _, raw in document.sections.get("Decisions", []):
+        if re.match(r"^\s*-\s+DEC-\d{3,}\b", raw, re.IGNORECASE):
+            if current:
+                blocks.append(current)
+            current = [raw]
+        elif current:
+            current.append(raw)
+    if current:
+        blocks.append(current)
+    rationale_pattern = (
+        r"\b(?:rationale|justificativa|raz[oó]n|motivo)\s*:\s*"
+        r"[^|\n]*[^\W_][^|\n]*(?:\||$)"
+    )
+    return any(
+        re.search(rf"\b{re.escape(requirement)}\b", text, re.IGNORECASE)
+        and re.search(rationale_pattern, text, re.IGNORECASE)
+        for text in ("\n".join(block) for block in blocks)
+    )
+
+
+def _review_is_independent(record: ReviewRecord, owner: str) -> bool:
+    reviewer = _normalize_claim(record.reviewer)
+    normalized_owner = _normalize_claim(owner)
+    return reviewer not in NON_INDEPENDENT_REVIEWERS and (
+        not normalized_owner or reviewer != normalized_owner
+    )
+
+
+def _review_has_evidence(record: ReviewRecord) -> bool:
+    evidence = _normalize_claim(record.evidence)
+    if re.match(
+        r"^(?:none\b|n\s*/?\s*a\b|not\s+applicable\b|no\s+evidence\b|not\s+recorded\b|"
+        r"unavailable\b)",
+        evidence,
+    ):
+        return False
+    has_url = bool(re.search(r"https?://\S+", evidence))
+    prose_without_urls = re.sub(r"https?://\S+", "", evidence)
+    subject = r"review|record|report|artifact|revis[aã]o|revisi[oó]n|registro|relat[oó]rio|informe|artefato"
+    unresolved = (
+        r"pending|planned|scheduled|required|pendente|planejad[oa]|programad[oa]|"
+        r"obrigat[oó]ri[oa]|requerid[oa]|pendiente|planificad[oa]"
+    )
+    contextual_status = (
+        rf"(?:\b(?:{subject})\b[^\n.!?;]{{0,200}}\b(?:{unresolved})\b)|"
+        rf"(?:\b(?:{unresolved})\b[^\n.!?;]{{0,200}}\b(?:{subject})\b)|"
+        r"(?:\b(?:review|revis[aã]o|revisi[oó]n)\s+(?:due|future|incomplete|awaiting|"
+        r"futur[oa]|incomplet[oa]|aguardando)\b)|"
+        r"(?:\b(?:due|future|incomplete|awaiting|futur[oa]|incomplet[oa]|aguardando)\s+"
+        r"(?:review|revis[aã]o|revisi[oó]n)\b)"
+    )
+    if re.search(contextual_status, prose_without_urls):
+        return False
+    if has_url:
+        return True
+    artifact_pattern = (
+        r"\b(?:review\s+(?:record|report|artifact)|(?:completed|passed|approved)\s+review|"
+        r"record|report|artifact|registro|relat[oó]rio|informe|artefato)\b"
+    )
+    if not re.search(artifact_pattern, evidence):
+        return False
+    for candidate in re.findall(r"\b\d{4}-\d{2}-\d{2}\b", evidence):
+        try:
+            dt.date.fromisoformat(candidate)
+            return True
+        except ValueError:
+            continue
+    return False
 
 
 def _definition_duplicates(document: Document) -> list[Finding]:
@@ -549,10 +704,14 @@ def validate_document(document: Document, gate: str) -> tuple[list[Finding], dic
             findings.append(
                 Finding("error", "AC003", f"{item.identifier} references unknown {item.requirement}", item.line)
             )
-        lowered = item.text.lower()
-        if not all(token in lowered for token in ("given", "when", "then")):
+        if not _has_acceptance_structure(item.text):
             findings.append(
-                Finding("warning", "AC004", f"{item.identifier} should express Given/When/Then behavior", item.line)
+                Finding(
+                    "warning",
+                    "AC004",
+                    f"{item.identifier} should express Given/When/Then behavior or a localized equivalent",
+                    item.line,
+                )
             )
 
     trace_by_requirement: dict[str, list[TraceRow]] = {}
@@ -572,6 +731,15 @@ def validate_document(document: Document, gate: str) -> tuple[list[Finding], dic
             )
         if row.status not in VALID_TRACE_STATUSES:
             findings.append(Finding("error", "TRACE007", f"invalid trace status: {row.status}", row.line))
+        if row.status == "not-applicable" and not _decision_explains_requirement(document, row.requirement):
+            findings.append(
+                Finding(
+                    "warning" if gate == "draft" else "error",
+                    "TRACE008",
+                    f"{row.requirement} marked not-applicable requires a DEC-* rationale",
+                    row.line,
+                )
+            )
 
     for requirement in requirement_by_id.values():
         if AMBIGUOUS_RE.search(requirement.text):
@@ -625,14 +793,34 @@ def validate_document(document: Document, gate: str) -> tuple[list[Finding], dic
         findings.append(Finding("error", "GATE001", "ready gate requires status ready, implemented, or verified", document.metadata_lines.get("status", 1)))
     if gate == "verified" and metadata.get("status") != "verified":
         findings.append(Finding("error", "GATE002", "verified gate requires status verified", document.metadata_lines.get("status", 1)))
+    if gate in {"ready", "verified"} and _normalize_claim(metadata.get("owner", "")) == "unassigned":
+        findings.append(
+            Finding(
+                "error",
+                "OWNER001",
+                "ready and verified specifications require an explicitly assigned owner",
+                document.metadata_lines.get("owner", 1),
+            )
+        )
     if gate == "verified":
         for requirement in requirement_by_id.values():
-            if requirement.level not in {"must", "must-not"}:
-                continue
             rows = trace_by_requirement.get(requirement.identifier, [])
-            if not rows or any(row.status != "passed" for row in rows):
+            if requirement.level in {"must", "must-not"} and (
+                not rows or any(row.status != "passed" for row in rows)
+            ):
                 findings.append(
                     Finding("error", "GATE003", f"{requirement.identifier} requires only passed verification rows", requirement.line)
+                )
+            elif requirement.level == "should" and (
+                not rows or any(row.status not in {"passed", "not-applicable"} for row in rows)
+            ):
+                findings.append(
+                    Finding(
+                        "error",
+                        "GATE005",
+                        f"{requirement.identifier} requires passed evidence or an explained not-applicable disposition",
+                        requirement.line,
+                    )
                 )
         for row in trace:
             if row.status in {"planned", "failed", "blocked"}:
@@ -641,28 +829,45 @@ def validate_document(document: Document, gate: str) -> tuple[list[Finding], dic
                 )
 
     if gate in {"ready", "verified"} and profile in {"standard", "critical"}:
-        for needle, code, label in (
-            ("rollback", "RISK001", "rollback or forward-recovery path"),
-            ("stop", "RISK002", "rollout stop condition"),
-        ):
-            if needle not in section_text(document, "Rollout and Rollback").lower():
+        rollout_text = section_text(document, "Rollout and Rollback")
+        for pattern, code, label in RISK_SECTION_CHECKS:
+            if not re.search(pattern, rollout_text, re.IGNORECASE):
                 findings.append(
                     Finding("warning", code, f"standard/critical spec should state a {label}", document.section_lines.get("Rollout and Rollback", 1))
                 )
 
     if gate in {"ready", "verified"} and profile == "critical":
-        critical_checks = [
-            ("Security and Privacy", r"trust boundar", "CRIT001", "trust boundaries"),
-            ("Security and Privacy", r"abuse|misuse", "CRIT002", "abuse or misuse cases"),
-            ("Security and Privacy", r"authoriz", "CRIT003", "authorization decisions"),
-            ("Security and Privacy", r"retention|classification", "CRIT004", "data classification or retention"),
-        ]
-        for section, pattern, code, label in critical_checks:
+        for section, pattern, code, label in CRITICAL_SECTION_CHECKS:
             if not re.search(pattern, section_text(document, section), re.IGNORECASE):
                 findings.append(
                     Finding("warning", code, f"critical spec should state {label}", document.section_lines.get(section, 1))
                 )
-        if not any(record.status == "passed" for record in reviews):
+        passed_reviews = [record for record in reviews if record.status == "passed"]
+        valid_passed_reviews = [
+            record
+            for record in passed_reviews
+            if _review_is_independent(record, metadata.get("owner", "")) and _review_has_evidence(record)
+        ]
+        for record in passed_reviews:
+            if not _review_is_independent(record, metadata.get("owner", "")):
+                findings.append(
+                    Finding(
+                        "error",
+                        "REVIEW003",
+                        f"{record.identifier} reviewer must differ from the spec owner and cannot be self-declared",
+                        record.line,
+                    )
+                )
+            if not _review_has_evidence(record):
+                findings.append(
+                    Finding(
+                        "error",
+                        "REVIEW004",
+                        f"{record.identifier} passed review requires concrete evidence",
+                        record.line,
+                    )
+                )
+        if not valid_passed_reviews:
             findings.append(
                 Finding(
                     "error",
@@ -798,7 +1003,7 @@ def command_init(args: argparse.Namespace) -> int:
         today = dt.date.today().isoformat()
         title = args.title.strip()
         spec_id = args.spec_id or _slug_identifier(target)
-        owner = (args.owner or os.environ.get("USER") or "unassigned").strip()
+        owner = (args.owner or "unassigned").strip()
         if not title:
             print("evidrail: title must not be empty", file=sys.stderr)
             return EXIT_USAGE
@@ -893,7 +1098,10 @@ def _trace_payload(document: Document) -> tuple[dict[str, object], bool]:
         covered_acceptance = sorted({row.acceptance for row in requirement_rows})
         expected_acceptance = sorted(acceptance_by_requirement.get(requirement.identifier, []))
         missing_acceptance = sorted(set(expected_acceptance) - set(covered_acceptance))
-        if requirement.level in {"must", "must-not"} and (not requirement_rows or missing_acceptance):
+        gated_levels = {"must", "must-not"}
+        if document.metadata.get("status") == "verified":
+            gated_levels.add("should")
+        if requirement.level in gated_levels and (not requirement_rows or missing_acceptance):
             unresolved = True
         matrix.append(
             {
@@ -905,7 +1113,8 @@ def _trace_payload(document: Document) -> tuple[dict[str, object], bool]:
                 "missing_acceptance": missing_acceptance,
             }
         )
-    validation_findings, _ = validate_document(document, "draft")
+    validation_gate = "verified" if document.metadata.get("status") == "verified" else "draft"
+    validation_findings, _ = validate_document(document, validation_gate)
     structural_errors = [item for item in validation_findings if item.severity == "error"]
     if requirement_findings or acceptance_findings or trace_findings or structural_errors:
         unresolved = True
