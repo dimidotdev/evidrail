@@ -17,8 +17,8 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
       - name: Run unit tests
@@ -26,7 +26,7 @@ jobs:
       - name: Validate dogfood specification
         run: python skill/spec-driven-development/scripts/evidrail.py check specs/evidrail-v1.md --gate ready
       - name: Validate conversation-first specification
-        run: python skill/spec-driven-development/scripts/evidrail.py check specs/evidrail-conversation-first.md --gate ready --strict
+        run: python skill/spec-driven-development/scripts/evidrail.py check specs/evidrail-conversation-first.md --gate verified --strict
       - name: Verify traceability
         run: python skill/spec-driven-development/scripts/evidrail.py trace specs/evidrail-v1.md
       - name: Verify conversation-first traceability

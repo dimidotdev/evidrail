@@ -73,7 +73,8 @@ For a greenfield repository without an established convention, the skill will re
 
 ## Active specification
 
-- `specs/evidrail-conversation-first.md` — conversation-first operating model and living memory.
+- `specs/evidrail-conversation-first.md` — verified conversation-first operating model and living
+  memory.
 
 ## Current verification state
 
@@ -84,9 +85,11 @@ For a greenfield repository without an established convention, the skill will re
   fix, critical passkey migration under urgency, reconsideration of an approved baseline and
   confidential discovery in a public repository.
 - Independent review completed; its validator and documentation findings were corrected. Two focused
-  re-reviews returned PASS. Remote CI remains before verified release status.
+  re-reviews returned PASS.
+- GitHub Actions run 30638946452 passed the full Python 3.11 matrix on Ubuntu, Windows and macOS; the
+  conversation-first specification is verified.
 
 ## Next frontier
 
-Commit and push the reviewed change, then use remote CI evidence to decide whether the
-conversation-first spec can move from implemented to verified.
+Exercise the workflow on real projects. Revisit a tagged release only when usage demonstrates that
+the conversation, memory and validator boundaries remain proportionate.

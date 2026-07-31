@@ -1,7 +1,7 @@
 ---
 spec: SPEC-EVIDRAIL-CONVERSATION-FIRST-0001
 title: "Conversation-first Evidrail guidance"
-status: implemented
+status: verified
 profile: standard
 mode: deliver
 owner: dimidotdev
@@ -265,7 +265,8 @@ trigger, delta and renewed approval.
   agent wrote nothing and asked whether to use ignored local, generalized tracked or conversational
   memory.
 - TEST-010 | Official skill validation, all 24 unit tests including 16 legacy cases, v1 ready/trace,
-  and the new strict ready/trace gates passed locally on 2026-07-31.
+  and the new strict ready/trace gates passed locally on 2026-07-31. GitHub Actions run 30638946452
+  then passed the complete matrix on Ubuntu, Windows and macOS with Python 3.11.
 - TEST-011 | `test_init_does_not_persist_environment_username` passed with a synthetic personal
   `USER` value and observed only `owner: "unassigned"` in the generated artifact; the ready-gate
   owner test rejected that placeholder until assigned.

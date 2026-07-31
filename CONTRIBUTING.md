@@ -19,7 +19,7 @@ Thanks for helping make AI-assisted delivery more deliberate and verifiable.
 ```bash
 python3 -m unittest discover -s tests -v
 python3 skill/spec-driven-development/scripts/evidrail.py check specs/evidrail-v1.md --gate ready
-python3 skill/spec-driven-development/scripts/evidrail.py check specs/evidrail-conversation-first.md --gate ready --strict
+python3 skill/spec-driven-development/scripts/evidrail.py check specs/evidrail-conversation-first.md --gate verified --strict
 python3 skill/spec-driven-development/scripts/evidrail.py trace specs/evidrail-v1.md
 python3 skill/spec-driven-development/scripts/evidrail.py trace specs/evidrail-conversation-first.md
 ```
